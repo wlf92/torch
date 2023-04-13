@@ -1,0 +1,32 @@
+// protoc --go_out=. --go-grpc_out=. ./*.proto
+
+syntax = "proto3";
+
+option go_package = ".;packet";
+
+package packet;
+
+message SingleRecv {
+    uint32 msg_id = 1; // 消息id
+    int32 area_id = 2; // 区域id
+    int32 channel_id = 3; // 渠道id
+    uint64 user_id = 4; // 用户id
+    bytes content = 5; // 内容
+}
+
+message SingleBack {
+    uint64 user_id = 1; // 用户id
+    bytes content = 2; // 内容
+}
+
+message MessageRouteReq {
+    repeated SingleRecv msgs = 1;
+}
+
+message MessageRouteRsp {
+    repeated SingleBack msgs = 1; 
+}
+
+service MessageHandler {
+    rpc MessageRoute(MessageRouteReq) returns (MessageRouteRsp) {}
+}

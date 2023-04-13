@@ -15,14 +15,10 @@ func (b *Node) Start() {
 
 }
 
-func (b *Node) Restart() {
-
-}
-
 func (b *Node) Destroy() {
 
 }
 
-func NewNode() IComponent {
+func NewNode() *Node {
 	return new(Node)
 }
