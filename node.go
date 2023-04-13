@@ -1,5 +1,7 @@
 package torch
 
+var _ IComponent = (*Node)(nil)
+
 type Node struct {
 }
 

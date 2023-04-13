@@ -8,7 +8,7 @@ func NewOptions() *Options {
 		DisableCaller:     false,
 		DisableStacktrace: false,
 		Level:             zapcore.InfoLevel.String(),
-		Format:            "json",
+		Format:            "console",
 		OutputPaths:       []string{"stdout"},
 	}
 }
