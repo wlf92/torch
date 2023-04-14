@@ -24,6 +24,7 @@ type (
 	Conn interface {
 		ID() int64                     // 获取连接ID
 		UID() int64                    // 获取用户ID
+		Bind(uid int64)                // 绑定用户ID
 		Send(bts []byte) error         // 发送消息
 		State() ConnState              // 获取连接状态
 		Close(isForce ...bool) error   // 关闭连接

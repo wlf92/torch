@@ -42,11 +42,6 @@ func (c *serverConn) Bind(uid int64) {
 	atomic.StoreInt64(&c.uid, uid)
 }
 
-// Unbind 解绑用户ID
-func (c *serverConn) Unbind() {
-	atomic.StoreInt64(&c.uid, 0)
-}
-
 // Send 发送消息（同步）
 func (c *serverConn) Send(msg []byte) (err error) {
 	c.rw.RLock()
