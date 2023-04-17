@@ -81,6 +81,10 @@ func (nd *Node) registerServiceInstance() {
 		Endpoint: ip,
 	}
 
+	for k := range nd.routes {
+		nd.instance.Routes = append(nd.instance.Routes, k)
+	}
+
 	ctx, cancel := context.WithTimeout(nd.ctx, 10*time.Second)
 	err := nd.registry.Register(ctx, nd.instance)
 	cancel()
@@ -112,7 +116,7 @@ func (nd *Node) startRPCServer() {
 	}
 
 	nd.rpc = grpc.NewServer()
-	nd.rpc.RegisterService(&transport.Inner_ServiceDesc, &transport.Server{})
+	nd.rpc.RegisterService(&transport.Inner_ServiceDesc, &transport.Server{Routes: nd.routes})
 
 	go func() {
 		if err := nd.rpc.Serve(ln); err != nil {

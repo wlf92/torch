@@ -82,7 +82,7 @@ func (r *registrar) register(ctx context.Context, ins *registry.ServiceInstance)
 		for i, v := range ins.Routes {
 			bd.WriteString(strconv.FormatUint(uint64(v), 16))
 			if i != len(ins.Routes)-1 {
-				bd.WriteString("-")
+				bd.WriteString(",")
 			}
 		}
 		registration.Meta[metaFieldRoutes] = bd.String()

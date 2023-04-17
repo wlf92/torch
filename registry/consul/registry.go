@@ -5,10 +5,12 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"github.com/spf13/cast"
 
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/registry"
@@ -172,12 +174,11 @@ func (r *Registry) services(ctx context.Context, serviceName string, waitIndex u
 				ins.Alias = v
 			case metaFieldState:
 				ins.State = known.State(v)
-			default:
-				route, err := strconv.Atoi(k)
-				if err != nil {
-					continue
+			case metaFieldRoutes:
+				arr := strings.Split(v, ",")
+				for _, v := range arr {
+					ins.Routes = append(ins.Routes, cast.ToUint32(v))
 				}
-				ins.Routes = append(ins.Routes, uint32(route))
 			}
 		}
 

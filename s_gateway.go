@@ -186,6 +186,7 @@ func (gw *Gateway) watchServiceInstance() {
 
 // 处理连接打开
 func (gw *Gateway) handleConnect(conn network.Conn) {
+	log.Infow("connnect one")
 	// s := g.sessions.Get().(*session.Session)
 	// s.Init(conn)
 	// g.group.AddSession(s)
@@ -193,6 +194,8 @@ func (gw *Gateway) handleConnect(conn network.Conn) {
 
 // 处理断开连接
 func (gw *Gateway) handleDisconnect(conn network.Conn) {
+	log.Infow("disconnnect one")
+
 	// s, err := g.group.RemSession(session.Conn, conn.ID())
 	// if err != nil {
 	// 	log.Errorf("session remove failed, gid: %d, cid: %d, uid: %d, err: %v", g.opts.id, s.CID(), s.UID(), err)
@@ -232,7 +235,10 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 		return
 	}
 
-	ct, err := grpc.Dial(ep.Address())
+	ct, err := grpc.Dial(ep.Address(), grpc.WithInsecure())
+	if err != nil {
+		return
+	}
 
 	client := transport.NewClient(ct)
 
@@ -243,13 +249,13 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 	}
 
 	rsp, err := client.MessageRoute(gw.ctx, &transport.MessageRouteReq{Msgs: []*transport.SingleRecv{single}})
+	if err != nil {
+		return
+	}
+
 	for _, v := range rsp.Msgs {
-		bts, err := packet.Pack(&packet.Message{
-			Route:  v.MsgId,
-			Buffer: v.Content,
-		})
 		if err == nil {
-			conn.Send(bts)
+			conn.Send(v.Content)
 		}
 	}
 }
