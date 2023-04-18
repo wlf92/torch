@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -24,7 +25,6 @@ type Logger interface {
 	Sync()
 }
 
-//
 var (
 	mu sync.Mutex
 
@@ -152,7 +152,7 @@ func (l *zapLogger) clone() *zapLogger {
 	return &lc
 }
 
-////////////////////////////////////////
+// //////////////////////////////////////
 // Sync 调用底层 zap.Logger 的 Sync 方法，将缓存中的日志刷新到磁盘文件中. 主程序需要在退出前调用 Sync.
 func Sync() { std.Sync() }
 
@@ -184,6 +184,36 @@ func Panicw(msg string, keysAndValues ...interface{}) {
 // Fatalw 输出 fatal 级别的日志.
 func Fatalw(msg string, keysAndValues ...interface{}) {
 	std.z.Sugar().Fatalw(msg, keysAndValues...)
+}
+
+// Debugw 输出 debug 级别的日志.
+func Debugf(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Debugw(fmt.Sprintf(format, keysAndValues...))
+}
+
+// Infow 输出 info 级别的日志.
+func Infof(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Infow(fmt.Sprintf(format, keysAndValues...))
+}
+
+// Warnw 输出 warning 级别的日志.
+func Warnf(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Warnw(fmt.Sprintf(format, keysAndValues...))
+}
+
+// Errorw 输出 error 级别的日志.
+func Errorf(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Errorw(fmt.Sprintf(format, keysAndValues...))
+}
+
+// Panicw 输出 panic 级别的日志.
+func Panicf(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Panicw(fmt.Sprintf(format, keysAndValues...))
+}
+
+// Fatalw 输出 fatal 级别的日志.
+func Fatalf(format string, keysAndValues ...interface{}) {
+	std.z.Sugar().Fatalw(fmt.Sprintf(format, keysAndValues...))
 }
 
 // C 解析传入的 context，尝试提取关注的键值，并添加到 zap.Logger 结构化日志中.

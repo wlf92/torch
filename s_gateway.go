@@ -6,17 +6,19 @@ import (
 	"net"
 	"time"
 
-	"github.com/wlf92/torch/launch"
+	"github.com/wlf92/torch/internal/launch"
+	"github.com/wlf92/torch/internal/router"
 	"github.com/wlf92/torch/network"
 	"github.com/wlf92/torch/packet"
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/pkg/log"
 	"github.com/wlf92/torch/registry"
-	"github.com/wlf92/torch/router"
 	"github.com/wlf92/torch/transport"
 	"github.com/wlf92/torch/utils/xnet"
 	"google.golang.org/grpc"
 )
+
+type ErrHandler func(err error)
 
 var _ IComponent = (*Gateway)(nil)
 
@@ -26,8 +28,9 @@ type Gateway struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	registry registry.IRegistry
-	instance *registry.ServiceInstance
+	registry   registry.IRegistry
+	instance   *registry.ServiceInstance
+	errHandler ErrHandler
 
 	rpc *grpc.Server
 
@@ -54,7 +57,7 @@ func (gw *Gateway) Init() {
 		log.Fatalw("registry can not be empty")
 	}
 
-	if launch.Config.Gate.RpcPort == 0 {
+	if launch.Config.Gate.RPCPort == 0 {
 		log.Fatalw("rpc_port can not be empty")
 	}
 }
@@ -83,10 +86,14 @@ func (gw *Gateway) SetRegistry(r registry.IRegistry) {
 	gw.registry = r
 }
 
+func (gw *Gateway) SetErrorHandler(handler ErrHandler) {
+	gw.errHandler = handler
+}
+
 // 注册服务实例
 func (gw *Gateway) registerServiceInstance() {
 	ip, _ := xnet.InternalIP()
-	ip = fmt.Sprintf("//%s:%d", ip, launch.Config.Gate.RpcPort)
+	ip = fmt.Sprintf("//%s:%d", ip, launch.Config.Gate.RPCPort)
 
 	gw.instance = &registry.ServiceInstance{
 		ID:       gw.Name(),
@@ -117,7 +124,7 @@ func (gw *Gateway) deregisterServiceInstance() {
 }
 
 func (gw *Gateway) startRPCServer() {
-	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", launch.Config.Gate.RpcPort))
+	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", launch.Config.Gate.RPCPort))
 	if err != nil {
 		return
 	}
@@ -225,37 +232,43 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 
 	route, err := gw.gateRouter.FindServiceRoute(message.Route)
 	if err != nil {
-		// conn.Send()
+		if gw.errHandler != nil {
+			gw.errHandler(fmt.Errorf("gateway.no.route"))
+		}
 		return
 	}
 
 	ep, err := route.FindEndpoint()
 	if err != nil {
-		// conn.Send()
+		if gw.errHandler != nil {
+			gw.errHandler(fmt.Errorf("gateway.no.service"))
+		}
 		return
 	}
 
 	ct, err := grpc.Dial(ep.Address(), grpc.WithInsecure())
 	if err != nil {
+		if gw.errHandler != nil {
+			gw.errHandler(fmt.Errorf("gateway.dial.fail"))
+		}
 		return
 	}
 
 	client := transport.NewClient(ct)
 
-	single := &transport.SingleRecv{
-		MsgId:   message.Route,
-		Content: message.Buffer,
-		UserId:  uint64(conn.UID()),
-	}
-
-	rsp, err := client.MessageRoute(gw.ctx, &transport.MessageRouteReq{Msgs: []*transport.SingleRecv{single}})
+	rsp, err := client.RouteRpc(gw.ctx, &transport.RouteRpcReq{
+		MsgId:  message.Route,
+		Datas:  message.Buffer,
+		UserId: conn.UID(),
+	})
 	if err != nil {
+		if gw.errHandler != nil {
+			gw.errHandler(err)
+		}
 		return
 	}
 
-	for _, v := range rsp.Msgs {
-		if err == nil {
-			conn.Send(v.Content)
-		}
+	if err == nil {
+		conn.Send(rsp.Datas)
 	}
 }

@@ -1,10 +1,12 @@
 package ws
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/network"
 	"github.com/wlf92/torch/pkg/log"
 )
@@ -64,7 +66,7 @@ func (s *server) Stop() error {
 }
 
 func (s *server) init() error {
-	addr, err := net.ResolveTCPAddr("tcp", ":8444")
+	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", launch.Config.Gate.WsPort))
 	if err != nil {
 		return err
 	}

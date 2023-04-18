@@ -22,7 +22,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type InnerClient interface {
-	MessageRoute(ctx context.Context, in *MessageRouteReq, opts ...grpc.CallOption) (*MessageRouteRsp, error)
+	RouteRpc(ctx context.Context, in *RouteRpcReq, opts ...grpc.CallOption) (*RouteRpcRsp, error)
+	HttpRpc(ctx context.Context, in *HttpRpcReq, opts ...grpc.CallOption) (*HttpRpcRsp, error)
 }
 
 type innerClient struct {
@@ -33,9 +34,18 @@ func NewInnerClient(cc grpc.ClientConnInterface) InnerClient {
 	return &innerClient{cc}
 }
 
-func (c *innerClient) MessageRoute(ctx context.Context, in *MessageRouteReq, opts ...grpc.CallOption) (*MessageRouteRsp, error) {
-	out := new(MessageRouteRsp)
-	err := c.cc.Invoke(ctx, "/transport.Inner/MessageRoute", in, out, opts...)
+func (c *innerClient) RouteRpc(ctx context.Context, in *RouteRpcReq, opts ...grpc.CallOption) (*RouteRpcRsp, error) {
+	out := new(RouteRpcRsp)
+	err := c.cc.Invoke(ctx, "/transport.Inner/RouteRpc", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *innerClient) HttpRpc(ctx context.Context, in *HttpRpcReq, opts ...grpc.CallOption) (*HttpRpcRsp, error) {
+	out := new(HttpRpcRsp)
+	err := c.cc.Invoke(ctx, "/transport.Inner/HttpRpc", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +56,8 @@ func (c *innerClient) MessageRoute(ctx context.Context, in *MessageRouteReq, opt
 // All implementations must embed UnimplementedInnerServer
 // for forward compatibility
 type InnerServer interface {
-	MessageRoute(context.Context, *MessageRouteReq) (*MessageRouteRsp, error)
+	RouteRpc(context.Context, *RouteRpcReq) (*RouteRpcRsp, error)
+	HttpRpc(context.Context, *HttpRpcReq) (*HttpRpcRsp, error)
 	mustEmbedUnimplementedInnerServer()
 }
 
@@ -54,8 +65,11 @@ type InnerServer interface {
 type UnimplementedInnerServer struct {
 }
 
-func (UnimplementedInnerServer) MessageRoute(context.Context, *MessageRouteReq) (*MessageRouteRsp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MessageRoute not implemented")
+func (UnimplementedInnerServer) RouteRpc(context.Context, *RouteRpcReq) (*RouteRpcRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RouteRpc not implemented")
+}
+func (UnimplementedInnerServer) HttpRpc(context.Context, *HttpRpcReq) (*HttpRpcRsp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HttpRpc not implemented")
 }
 func (UnimplementedInnerServer) mustEmbedUnimplementedInnerServer() {}
 
@@ -70,20 +84,38 @@ func RegisterInnerServer(s grpc.ServiceRegistrar, srv InnerServer) {
 	s.RegisterService(&Inner_ServiceDesc, srv)
 }
 
-func _Inner_MessageRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MessageRouteReq)
+func _Inner_RouteRpc_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RouteRpcReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(InnerServer).MessageRoute(ctx, in)
+		return srv.(InnerServer).RouteRpc(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/transport.Inner/MessageRoute",
+		FullMethod: "/transport.Inner/RouteRpc",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InnerServer).MessageRoute(ctx, req.(*MessageRouteReq))
+		return srv.(InnerServer).RouteRpc(ctx, req.(*RouteRpcReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Inner_HttpRpc_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HttpRpcReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InnerServer).HttpRpc(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/transport.Inner/HttpRpc",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InnerServer).HttpRpc(ctx, req.(*HttpRpcReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -96,8 +128,12 @@ var Inner_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*InnerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "MessageRoute",
-			Handler:    _Inner_MessageRoute_Handler,
+			MethodName: "RouteRpc",
+			Handler:    _Inner_RouteRpc_Handler,
+		},
+		{
+			MethodName: "HttpRpc",
+			Handler:    _Inner_HttpRpc_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

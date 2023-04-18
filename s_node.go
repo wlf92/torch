@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/wlf92/torch/launch"
+	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/pkg/log"
 	"github.com/wlf92/torch/registry"
@@ -27,13 +27,15 @@ type Node struct {
 	rpc *grpc.Server
 
 	routes map[uint32]transport.RouteHandler
+
+	cf *launch.Node
 }
 
-func NewNode() *Node {
+func NewNode(name string) *Node {
 	nd := new(Node)
 	nd.ctx, nd.cancel = context.WithCancel(context.Background())
 	nd.routes = make(map[uint32]transport.RouteHandler)
-
+	nd.cf = launch.Config.GetNodeByName(name)
 	return nd
 }
 
@@ -45,7 +47,7 @@ func (nd *Node) Init() {
 	if nd.registry == nil {
 		log.Fatalw("registry can not be empty")
 	}
-	if launch.Config.Node.RpcPort == 0 {
+	if nd.cf.RPCPort == 0 {
 		log.Fatalw("rpc_port can not be empty")
 	}
 }
@@ -70,7 +72,7 @@ func (nd *Node) SetRegistry(r registry.IRegistry) {
 // 注册服务实例
 func (nd *Node) registerServiceInstance() {
 	ip, _ := xnet.InternalIP()
-	ip = fmt.Sprintf("//%s:%d", ip, launch.Config.Node.RpcPort)
+	ip = fmt.Sprintf("//%s:%d", ip, nd.cf.RPCPort)
 
 	nd.instance = &registry.ServiceInstance{
 		ID:       nd.Name(),
@@ -105,7 +107,7 @@ func (nd *Node) deregisterServiceInstance() {
 }
 
 func (nd *Node) startRPCServer() {
-	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", launch.Config.Node.RpcPort))
+	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", nd.cf.RPCPort))
 	if err != nil {
 		return
 	}

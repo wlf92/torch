@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/spf13/cast"
 
+	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/registry"
 )
@@ -41,14 +42,14 @@ type Registry struct {
 
 func NewRegistry() *Registry {
 	o := new(options)
-	o.addr = "192.168.56.7:8500"
+	o.addr = launch.Config.Consul.Addr
 	o.ctx = context.Background()
-	o.enableHealthCheck = true
-	o.healthCheckInterval = 10
-	o.healthCheckTimeout = 5
-	o.enableHeartbeatCheck = true
-	o.heartbeatCheckInterval = 10
-	o.deregisterCriticalServiceAfter = 10
+	o.enableHealthCheck = launch.Config.Consul.HealthCheck
+	o.healthCheckInterval = launch.Config.Consul.HealthCheckInterval
+	o.healthCheckTimeout = launch.Config.Consul.HealthCheckTimeout
+	o.enableHeartbeatCheck = launch.Config.Consul.HeartbeatCheck
+	o.heartbeatCheckInterval = launch.Config.Consul.HeartbeatCheckInterval
+	o.deregisterCriticalServiceAfter = launch.Config.Consul.DeregisterCriticalServiceAfter
 
 	r := &Registry{}
 	r.opts = o

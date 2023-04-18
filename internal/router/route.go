@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/wlf92/torch/endpoint"
+	"github.com/wlf92/torch/internal/endpoint"
 )
 
 type BalanceStrategy string

@@ -6,27 +6,32 @@ option go_package = ".;transport";
 
 package transport;
 
-message SingleRecv {
+message RouteRpcReq {
     uint32 msg_id = 1; // 消息id
     int32 area_id = 2; // 区域id
     int32 channel_id = 3; // 渠道id
-    uint64 user_id = 4; // 用户id
-    bytes content = 5; // 内容
+    int64 user_id = 4; // 用户id
+    bytes datas = 5; // 内容
 }
 
-message SingleBack {
-    uint64 user_id = 1; // 用户id
-    bytes content = 2; // 内容
+message RouteRpcRsp {
+    int64 user_id = 1; // 用户id
+    bytes datas = 2; // 内容
 }
 
-message MessageRouteReq {
-    repeated SingleRecv msgs = 1;
+message HttpRpcReq {
+    map<string, string> header = 1;
+    string param = 2;
+    bytes body = 3;
 }
 
-message MessageRouteRsp {
-    repeated SingleBack msgs = 1; 
+message HttpRpcRsp {
+    int32 code = 1;
+    string msg = 2;
+    string data = 3;
 }
 
 service Inner {
-    rpc MessageRoute(MessageRouteReq) returns (MessageRouteRsp) {}
+    rpc RouteRpc(RouteRpcReq) returns (RouteRpcRsp) {}
+    rpc HttpRpc(HttpRpcReq) returns (HttpRpcRsp) {}
 }

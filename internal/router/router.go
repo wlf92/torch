@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/wlf92/torch/endpoint"
+	"github.com/wlf92/torch/internal/endpoint"
 	"github.com/wlf92/torch/pkg/log"
 	"github.com/wlf92/torch/registry"
 )

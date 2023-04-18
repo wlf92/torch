@@ -14,6 +14,6 @@ func NewClient(cc *grpc.ClientConn) *client {
 	return &client{ct: NewInnerClient(cc)}
 }
 
-func (c *client) MessageRoute(ctx context.Context, req *MessageRouteReq) (rsp *MessageRouteRsp, err error) {
-	return c.ct.MessageRoute(ctx, req)
+func (c *client) RouteRpc(ctx context.Context, req *RouteRpcReq) (rsp *RouteRpcRsp, err error) {
+	return c.ct.RouteRpc(ctx, req)
 }
