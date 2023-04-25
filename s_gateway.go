@@ -32,7 +32,9 @@ type Gateway struct {
 	instance   *registry.ServiceInstance
 	errHandler ErrHandler
 
-	rpc *grpc.Server
+	rpc     *grpc.Server
+	rpcDesc *grpc.ServiceDesc
+	rpcObj  interface{}
 
 	gateRouter *router.Router // 网关路由器
 }
@@ -123,6 +125,11 @@ func (gw *Gateway) deregisterServiceInstance() {
 	}
 }
 
+func (gw *Gateway) SetRpcService(sd *grpc.ServiceDesc, ss interface{}) {
+	gw.rpcDesc = sd
+	gw.rpcObj = ss
+}
+
 func (gw *Gateway) startRPCServer() {
 	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", launch.Config.Gate.RPCPort))
 	if err != nil {
@@ -135,6 +142,9 @@ func (gw *Gateway) startRPCServer() {
 	}
 
 	gw.rpc = grpc.NewServer()
+	if gw.rpcDesc != nil {
+		gw.rpc.RegisterService(gw.rpcDesc, gw.rpcObj)
+	}
 
 	go func() {
 		if err := gw.rpc.Serve(ln); err != nil {

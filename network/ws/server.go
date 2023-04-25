@@ -89,12 +89,12 @@ func (s *server) serve() {
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", 405)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
 		if s.upgradeHandler != nil && !s.upgradeHandler(w, r) {
-			http.Error(w, "Forbidden", 403)
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 

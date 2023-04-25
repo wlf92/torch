@@ -26,6 +26,9 @@ type Node struct {
 
 	rpc *grpc.Server
 
+	rpcDesc *grpc.ServiceDesc
+	rpcObj  interface{}
+
 	routes map[uint32]transport.RouteHandler
 
 	cf *launch.Node
@@ -106,6 +109,11 @@ func (nd *Node) deregisterServiceInstance() {
 	}
 }
 
+func (nd *Node) SetRpcService(sd *grpc.ServiceDesc, ss interface{}) {
+	nd.rpcDesc = sd
+	nd.rpcObj = ss
+}
+
 func (nd *Node) startRPCServer() {
 	addr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%d", nd.cf.RPCPort))
 	if err != nil {
@@ -119,6 +127,9 @@ func (nd *Node) startRPCServer() {
 
 	nd.rpc = grpc.NewServer()
 	nd.rpc.RegisterService(&transport.Inner_ServiceDesc, &transport.Server{Routes: nd.routes})
+	if nd.rpcDesc != nil {
+		nd.rpc.RegisterService(nd.rpcDesc, nd.rpcObj)
+	}
 
 	go func() {
 		if err := nd.rpc.Serve(ln); err != nil {
