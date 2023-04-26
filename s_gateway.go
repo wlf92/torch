@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 )
 
+type FilterHandler func(msgId uint32, conn network.Conn) bool // 返回true则不继续往下走
 type ErrHandler func(err error)
 
 var _ IComponent = (*Gateway)(nil)
@@ -28,9 +29,10 @@ type Gateway struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	registry   registry.IRegistry
-	instance   *registry.ServiceInstance
-	errHandler ErrHandler
+	registry      registry.IRegistry
+	instance      *registry.ServiceInstance
+	errHandler    ErrHandler
+	filterHandler FilterHandler
 
 	rpc     *grpc.Server
 	rpcDesc *grpc.ServiceDesc
@@ -95,15 +97,15 @@ func (gw *Gateway) SetErrorHandler(handler ErrHandler) {
 // 注册服务实例
 func (gw *Gateway) registerServiceInstance() {
 	ip, _ := xnet.InternalIP()
-	ip = fmt.Sprintf("//%s:%d", ip, launch.Config.Gate.RPCPort)
+	ep := fmt.Sprintf("//%s:%d", ip, launch.Config.Gate.RPCPort)
 
 	gw.instance = &registry.ServiceInstance{
-		ID:       gw.Name(),
+		ID:       fmt.Sprintf("%s-%s:%d", gw.Name(), ip, launch.Config.Gate.RPCPort),
 		Name:     string(known.Gate),
 		Kind:     known.Gate,
 		Alias:    gw.Name(),
 		State:    known.Work,
-		Endpoint: ip,
+		Endpoint: ep,
 	}
 
 	ctx, cancel := context.WithTimeout(gw.ctx, 10*time.Second)
@@ -232,6 +234,10 @@ func (gw *Gateway) handleDisconnect(conn network.Conn) {
 	// g.sessions.Put(s)
 }
 
+func (gw *Gateway) SetFilterFunc(handler FilterHandler) {
+	gw.filterHandler = handler
+}
+
 // 处理接收到的消息
 func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 	message, err := packet.Unpack(data)
@@ -240,7 +246,11 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 		return
 	}
 
-	route, err := gw.gateRouter.FindServiceRoute(message.Route)
+	if gw.filterHandler != nil && gw.filterHandler(message.Route, conn) {
+		return
+	}
+
+	route, err := gw.gateRouter.FindMsgRoute(message.Route)
 	if err != nil {
 		if gw.errHandler != nil {
 			gw.errHandler(fmt.Errorf("gateway.no.route"))
@@ -264,7 +274,7 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 		return
 	}
 
-	client := transport.NewClient(ct)
+	client := transport.NewInnerClient(ct)
 
 	rsp, err := client.RouteRpc(gw.ctx, &transport.RouteRpcReq{
 		MsgId:  message.Route,

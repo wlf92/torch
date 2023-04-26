@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wlf92/torch/internal/launch"
+	"github.com/wlf92/torch/internal/router"
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/pkg/log"
 	"github.com/wlf92/torch/registry"
@@ -24,14 +25,16 @@ type Node struct {
 	registry registry.IRegistry
 	instance *registry.ServiceInstance
 
-	rpc *grpc.Server
-
+	rpc     *grpc.Server
 	rpcDesc *grpc.ServiceDesc
 	rpcObj  interface{}
 
 	routes map[uint32]transport.RouteHandler
 
-	cf *launch.Node
+	rpcRouter *router.Router // rpc路由器
+
+	cf   *launch.Node
+	name string
 }
 
 func NewNode(name string) *Node {
@@ -39,11 +42,13 @@ func NewNode(name string) *Node {
 	nd.ctx, nd.cancel = context.WithCancel(context.Background())
 	nd.routes = make(map[uint32]transport.RouteHandler)
 	nd.cf = launch.Config.GetNodeByName(name)
+	nd.rpcRouter = router.NewRouter(router.Random)
+	nd.name = name
 	return nd
 }
 
 func (nd *Node) Name() string {
-	return "node"
+	return nd.name
 }
 
 func (nd *Node) Init() {
@@ -58,6 +63,7 @@ func (nd *Node) Init() {
 func (nd *Node) Start() {
 	nd.startRPCServer()
 	nd.registerServiceInstance()
+	nd.watchServiceInstance()
 
 	log.Infow("node server startup successful")
 }
@@ -75,15 +81,15 @@ func (nd *Node) SetRegistry(r registry.IRegistry) {
 // 注册服务实例
 func (nd *Node) registerServiceInstance() {
 	ip, _ := xnet.InternalIP()
-	ip = fmt.Sprintf("//%s:%d", ip, nd.cf.RPCPort)
+	ep := fmt.Sprintf("//%s:%d", ip, nd.cf.RPCPort)
 
 	nd.instance = &registry.ServiceInstance{
-		ID:       nd.Name(),
+		ID:       fmt.Sprintf("%s-%s:%d", nd.Name(), ip, nd.cf.RPCPort),
 		Name:     string(known.Node),
 		Kind:     known.Node,
 		Alias:    nd.Name(),
 		State:    known.Work,
-		Endpoint: ip,
+		Endpoint: ep,
 	}
 
 	for k := range nd.routes {
@@ -97,6 +103,34 @@ func (nd *Node) registerServiceInstance() {
 	if err != nil {
 		log.Fatalw(fmt.Sprintf("register service instance failed: %v", err))
 	}
+}
+
+func (nd *Node) watchServiceInstance() {
+	rctx, rcancel := context.WithTimeout(nd.ctx, 10*time.Second)
+	watcher, err := nd.registry.Watch(rctx, string(known.Node))
+	rcancel()
+
+	if err != nil {
+		log.Fatalw(fmt.Sprintf("the service instance watch failed: %v", err))
+	}
+	go func() {
+		defer watcher.Stop()
+		for {
+			select {
+			case <-nd.ctx.Done():
+				return
+			default:
+				// exec watch
+			}
+
+			services, err := watcher.Next()
+			if err != nil {
+				continue
+			}
+
+			nd.rpcRouter.ReplaceServices(services...)
+		}
+	}()
 }
 
 // 解注册服务实例
@@ -144,4 +178,23 @@ func (nd *Node) stopRPCServer() {
 
 func (nd *Node) AddRouteHandler(route uint32, handler transport.RouteHandler) {
 	nd.routes[route] = handler
+}
+
+func (nd *Node) GetServiceClient(alias string) *grpc.ClientConn {
+	route, err := nd.rpcRouter.FindSvcRoute(alias)
+	if err != nil {
+		return nil
+	}
+
+	ep, err := route.FindEndpoint()
+	if err != nil {
+		return nil
+	}
+
+	ct, err := grpc.Dial(ep.Address(), grpc.WithInsecure())
+	if err != nil {
+		return nil
+	}
+
+	return ct
 }

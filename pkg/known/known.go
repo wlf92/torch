@@ -11,8 +11,8 @@ const (
 type Kind string
 
 const (
-	Gate Kind = "t_gate" // 网关服
-	Node Kind = "t_node" // 节点服
+	Gate Kind = "gate" // 网关服
+	Node Kind = "node" // 节点服
 )
 
 type State string

@@ -1,8 +1,6 @@
 package transport
 
-import (
-	"context"
-)
+import context "context"
 
 type RouteHandler func(channel, area int32, uid int64, bts []byte) ([]byte, error)
 

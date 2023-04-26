@@ -22,7 +22,6 @@ type endpointInfo struct {
 }
 
 type Route struct {
-	id      uint32  // 路由ID
 	router  *Router // 路由器
 	counter int64   // 轮询计数器
 
@@ -31,9 +30,8 @@ type Route struct {
 	endpointArr []*endpointInfo          // 服务端点表
 }
 
-func newRoute(router *Router, id uint32) *Route {
+func newRoute(router *Router) *Route {
 	return &Route{
-		id:          id,
 		router:      router,
 		endpointMap: make(map[string]*endpointInfo),
 		endpointArr: make([]*endpointInfo, 0),

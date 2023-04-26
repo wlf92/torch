@@ -2,6 +2,7 @@ package consul
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"strconv"
@@ -16,6 +17,8 @@ import (
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/registry"
 )
+
+const NamePrefix = "torch"
 
 var _ registry.IRegistry = &Registry{}
 
@@ -72,6 +75,8 @@ func (r *Registry) Register(ctx context.Context, ins *registry.ServiceInstance) 
 		return r.err
 	}
 
+	ins.Name = fmt.Sprintf("%s-%s", NamePrefix, ins.Name)
+
 	v, ok := r.registrars.Load(ins.ID)
 	if ok {
 		return v.(*registrar).register(ctx, ins)
@@ -90,6 +95,8 @@ func (r *Registry) Register(ctx context.Context, ins *registry.ServiceInstance) 
 
 // Deregister 解注册服务实例
 func (r *Registry) Deregister(ctx context.Context, ins *registry.ServiceInstance) error {
+	ins.Name = fmt.Sprintf("%s-%s", NamePrefix, ins.Name)
+
 	v, ok := r.registrars.Load(ins.ID)
 	if ok {
 		return v.(*registrar).deregister(ctx, ins)
@@ -103,6 +110,8 @@ func (r *Registry) Services(ctx context.Context, serviceName string) ([]*registr
 	if r.err != nil {
 		return nil, r.err
 	}
+
+	serviceName = fmt.Sprintf("%s-%s", NamePrefix, serviceName)
 
 	v, ok := r.watchers.Load(serviceName)
 	if ok {
@@ -118,6 +127,8 @@ func (r *Registry) Watch(ctx context.Context, serviceName string) (registry.IWat
 	if r.err != nil {
 		return nil, r.err
 	}
+
+	serviceName = fmt.Sprintf("%s-%s", NamePrefix, serviceName)
 
 	v, ok := r.watchers.Load(serviceName)
 	if ok {
