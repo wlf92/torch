@@ -7,16 +7,13 @@ option go_package = ".;transport";
 package transport;
 
 message RouteRpcReq {
-    uint32 msg_id = 1; // 消息id
-    int32 area_id = 2; // 区域id
-    int32 channel_id = 3; // 渠道id
-    int64 user_id = 4; // 用户id
-    bytes datas = 5; // 内容
+    int64 user_id = 1; // 用户id
+    uint32 msg_id = 2; // 消息id
+    bytes datas = 3; // 内容
 }
 
 message RouteRpcRsp {
-    int64 user_id = 1; // 用户id
-    bytes datas = 2; // 内容
+    bytes datas = 1; // 内容
 }
 
 message HttpRpcReq {

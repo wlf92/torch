@@ -1,11 +1,13 @@
-package torch
+package gate
 
 import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
+	"github.com/wlf92/torch"
 	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/internal/router"
 	"github.com/wlf92/torch/network"
@@ -13,15 +15,18 @@ import (
 	"github.com/wlf92/torch/pkg/known"
 	"github.com/wlf92/torch/pkg/log"
 	"github.com/wlf92/torch/registry"
+	"github.com/wlf92/torch/session"
 	"github.com/wlf92/torch/transport"
 	"github.com/wlf92/torch/utils/xnet"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type FilterHandler func(msgId uint32, conn network.Conn) bool // 返回true则不继续往下走
-type ErrHandler func(err error)
+type ErrHandler func(conn network.Conn, err error)
 
-var _ IComponent = (*Gateway)(nil)
+var _ torch.IComponent = (*Gateway)(nil)
+var instance *Gateway
 
 type Gateway struct {
 	server network.IServer // 网关服务器
@@ -39,13 +44,19 @@ type Gateway struct {
 	rpcObj  interface{}
 
 	gateRouter *router.Router // 网关路由器
+
+	mpClients  sync.Map
+	mpSessions sync.Map
 }
 
-func NewGateway() *Gateway {
+func Create() *Gateway {
 	gw := new(Gateway)
 	gw.ctx, gw.cancel = context.WithCancel(context.Background())
 	gw.gateRouter = router.NewRouter(router.Random)
+	gw.mpClients = sync.Map{}
+	gw.mpSessions = sync.Map{}
 
+	instance = gw
 	return gw
 }
 
@@ -206,32 +217,15 @@ func (gw *Gateway) watchServiceInstance() {
 // 处理连接打开
 func (gw *Gateway) handleConnect(conn network.Conn) {
 	log.Infow("connnect one")
-	// s := g.sessions.Get().(*session.Session)
-	// s.Init(conn)
-	// g.group.AddSession(s)
+
+	s := session.NewSession()
+	gw.mpSessions.Store(conn.ID(), s)
 }
 
 // 处理断开连接
 func (gw *Gateway) handleDisconnect(conn network.Conn) {
 	log.Infow("disconnnect one")
-
-	// s, err := g.group.RemSession(session.Conn, conn.ID())
-	// if err != nil {
-	// 	log.Errorf("session remove failed, gid: %d, cid: %d, uid: %d, err: %v", g.opts.id, s.CID(), s.UID(), err)
-	// 	return
-	// }
-
-	// if uid := conn.UID(); uid > 0 {
-	// 	ctx, cancel := context.WithTimeout(g.ctx, g.opts.timeout)
-	// 	err = g.proxy.unbindGate(ctx, conn.ID(), uid)
-	// 	cancel()
-	// 	if err != nil {
-	// 		log.Errorf("user unbind failed, gid: %d, uid: %d, err: %v", g.opts.id, uid, err)
-	// 	}
-	// }
-
-	// s.Reset()
-	// g.sessions.Put(s)
+	gw.mpSessions.Delete(conn.ID())
 }
 
 func (gw *Gateway) SetFilterFunc(handler FilterHandler) {
@@ -253,7 +247,7 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 	route, err := gw.gateRouter.FindMsgRoute(message.Route)
 	if err != nil {
 		if gw.errHandler != nil {
-			gw.errHandler(fmt.Errorf("gateway.no.route"))
+			gw.errHandler(conn, fmt.Errorf("gateway.no.route"))
 		}
 		return
 	}
@@ -261,34 +255,43 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 	ep, err := route.FindEndpoint()
 	if err != nil {
 		if gw.errHandler != nil {
-			gw.errHandler(fmt.Errorf("gateway.no.service"))
+			gw.errHandler(conn, fmt.Errorf("gateway.no.service"))
 		}
 		return
 	}
 
-	ct, err := grpc.Dial(ep.Address(), grpc.WithInsecure())
-	if err != nil {
-		if gw.errHandler != nil {
-			gw.errHandler(fmt.Errorf("gateway.dial.fail"))
+	client, ok := gw.mpClients.Load(ep.Address())
+	if !ok {
+		// 如果带宽够，一个连接够了，没必要多个连接，grpc内部会保证重连的问题，所以也不用处理
+		for i := 0; i < 3; i++ {
+			ct, err := grpc.Dial(ep.Address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				if i == 2 {
+					if gw.errHandler != nil {
+						gw.errHandler(conn, fmt.Errorf("gateway.dial.fail"))
+					}
+					continue
+				}
+			}
+			client = transport.NewInnerClient(ct)
+			gw.mpClients.Store(ep.Address(), client)
+			break
 		}
-		return
 	}
 
-	client := transport.NewInnerClient(ct)
-
-	rsp, err := client.RouteRpc(gw.ctx, &transport.RouteRpcReq{
+	rsp, err := client.(transport.InnerClient).RouteRpc(gw.ctx, &transport.RouteRpcReq{
 		MsgId:  message.Route,
 		Datas:  message.Buffer,
 		UserId: conn.UID(),
 	})
 	if err != nil {
 		if gw.errHandler != nil {
-			gw.errHandler(err)
+			gw.errHandler(conn, err)
 		}
 		return
 	}
 
-	if err == nil {
+	if err == nil && rsp != nil && len(rsp.Datas) > 0 {
 		conn.Send(rsp.Datas)
 	}
 }

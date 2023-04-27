@@ -1,11 +1,14 @@
-package torch
+package node
 
 import (
 	"context"
 	"fmt"
 	"net"
+	"reflect"
+	"sync"
 	"time"
 
+	"github.com/wlf92/torch"
 	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/internal/router"
 	"github.com/wlf92/torch/pkg/known"
@@ -14,9 +17,11 @@ import (
 	"github.com/wlf92/torch/transport"
 	"github.com/wlf92/torch/utils/xnet"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 )
 
-var _ IComponent = (*Node)(nil)
+var _ torch.IComponent = (*Node)(nil)
 
 type Node struct {
 	ctx    context.Context
@@ -29,21 +34,23 @@ type Node struct {
 	rpcDesc *grpc.ServiceDesc
 	rpcObj  interface{}
 
-	routes map[uint32]transport.RouteHandler
+	routes map[uint32]interface{}
 
 	rpcRouter *router.Router // rpc路由器
 
-	cf   *launch.Node
-	name string
+	cf        *launch.Node
+	name      string
+	mpClients sync.Map
 }
 
-func NewNode(name string) *Node {
+func Create(name string) *Node {
 	nd := new(Node)
 	nd.ctx, nd.cancel = context.WithCancel(context.Background())
-	nd.routes = make(map[uint32]transport.RouteHandler)
+	nd.routes = make(map[uint32]interface{})
 	nd.cf = launch.Config.GetNodeByName(name)
 	nd.rpcRouter = router.NewRouter(router.Random)
 	nd.name = name
+	nd.mpClients = sync.Map{}
 	return nd
 }
 
@@ -176,7 +183,23 @@ func (nd *Node) stopRPCServer() {
 	nd.rpc.Stop()
 }
 
-func (nd *Node) AddRouteHandler(route uint32, handler transport.RouteHandler) {
+func (nd *Node) AddRouteHandler(route uint32, handler interface{}) {
+	tp := reflect.TypeOf(handler)
+	if tp.Kind() != reflect.Func {
+		panic("AddRouteHandler: handler must be func")
+	}
+	if tp.NumIn() != 2 || tp.NumOut() != 1 {
+		panic("AddRouteHandler: in/out count error")
+	}
+	if tp.In(0).Kind() != reflect.Int64 {
+		panic("AddRouteHandler")
+	}
+	if _, ok := reflect.New(tp.In(1).Elem()).Interface().(proto.Message); !ok {
+		panic("AddRouteHandler")
+	}
+	if _, ok := reflect.New(tp.Out(0).Elem()).Interface().(proto.Message); !ok {
+		panic("AddRouteHandler")
+	}
 	nd.routes[route] = handler
 }
 
@@ -191,10 +214,20 @@ func (nd *Node) GetServiceClient(alias string) *grpc.ClientConn {
 		return nil
 	}
 
-	ct, err := grpc.Dial(ep.Address(), grpc.WithInsecure())
-	if err != nil {
-		return nil
+	client, ok := nd.mpClients.Load(ep.Address())
+	if !ok {
+		// 如果带宽够，一个连接够了，没必要多个连接，grpc内部会保证重连的问题，所以也不用处理
+		for i := 0; i < 3; i++ {
+			client, err = grpc.Dial(ep.Address(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				if i == 2 {
+					return nil
+				}
+				continue
+			}
+			nd.mpClients.Store(ep.Address(), client)
+			break
+		}
 	}
-
-	return ct
+	return client.(*grpc.ClientConn)
 }
