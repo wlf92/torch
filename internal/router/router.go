@@ -49,24 +49,6 @@ func (r *Router) ReplaceServices(services ...*registry.ServiceInstance) {
 	}
 }
 
-// RemoveServices 移除服务实例
-func (r *Router) RemoveServices(services ...*registry.ServiceInstance) {
-	r.rw.Lock()
-	defer r.rw.Unlock()
-
-	for _, service := range services {
-		delete(r.endpoints, service.ID)
-		for _, id := range service.Routes {
-			if route, ok := r.msgRoutes[id]; ok {
-				route.removeEndpoint(service.ID)
-			}
-		}
-		if route, ok := r.svcRoutes[service.Alias]; ok {
-			route.removeEndpoint(service.ID)
-		}
-	}
-}
-
 // AddServices 添加服务实例
 func (r *Router) AddServices(services ...*registry.ServiceInstance) {
 	r.rw.Lock()
@@ -77,14 +59,6 @@ func (r *Router) AddServices(services ...*registry.ServiceInstance) {
 			log.Errorw(fmt.Sprintf("service instance add failed, insID: %s kind: %s name: %s endpoint: %s err: %v", service.ID, service.Kind, service.Name, service.Endpoint, err))
 		}
 	}
-}
-
-// AddService 添加服务实例
-func (r *Router) AddService(service *registry.ServiceInstance) error {
-	r.rw.Lock()
-	defer r.rw.Unlock()
-
-	return r.addService(service)
 }
 
 // 添加服务实例
@@ -141,27 +115,27 @@ func (r *Router) FindSvcRoute(alias string) (*Route, error) {
 	return route, nil
 }
 
-// // FindServiceEndpoint 查找服务端口
-// func (r *Router) FindServiceEndpoint(insID string) (*endpoint.Endpoint, error) {
-// 	r.rw.RLock()
-// 	defer r.rw.RUnlock()
+// FindServiceEndpoint 查找服务端口
+func (r *Router) FindServiceEndpoint(insID string) (*endpoint.Endpoint, error) {
+	r.rw.RLock()
+	defer r.rw.RUnlock()
 
-// 	ep, ok := r.endpoints[insID]
-// 	if !ok {
-// 		return nil, ErrNotFoundEndpoint
-// 	}
+	ep, ok := r.endpoints[insID]
+	if !ok {
+		return nil, ErrNotFoundEndpoint
+	}
 
-// 	return ep, nil
-// }
+	return ep, nil
+}
 
-// // IterationServiceEndpoint 迭代服务端口
-// func (r *Router) IterationServiceEndpoint(fn func(insID string, ep *endpoint.Endpoint) bool) {
-// 	r.rw.RLock()
-// 	defer r.rw.RUnlock()
+// IterationServiceEndpoint 迭代服务端口
+func (r *Router) IterationServiceEndpoint(fn func(insID string, ep *endpoint.Endpoint) bool) {
+	r.rw.RLock()
+	defer r.rw.RUnlock()
 
-// 	for insID, ep := range r.endpoints {
-// 		if !fn(insID, ep) {
-// 			break
-// 		}
-// 	}
-// }
+	for insID, ep := range r.endpoints {
+		if !fn(insID, ep) {
+			break
+		}
+	}
+}

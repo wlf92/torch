@@ -6,10 +6,16 @@ option go_package = ".;transport";
 
 package transport;
 
+message Header {
+    string gate_id = 1; // 网关id
+    int64 conn_id = 2; // 连接id
+    int64 user_id = 3; // 用户id
+    uint32 msg_id = 4; // 消息id
+}
+
 message RouteRpcReq {
-    int64 user_id = 1; // 用户id
-    uint32 msg_id = 2; // 消息id
-    bytes datas = 3; // 内容
+    Header head = 1;
+    bytes datas = 2; // 内容
 }
 
 message RouteRpcRsp {

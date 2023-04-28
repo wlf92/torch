@@ -43,16 +43,18 @@ type Gateway struct {
 	rpcDesc *grpc.ServiceDesc
 	rpcObj  interface{}
 
-	gateRouter *router.Router // 网关路由器
+	deliveryRouter *router.Router // 网关路由器
 
 	mpClients  sync.Map
 	mpSessions sync.Map
+
+	regName string
 }
 
 func Create() *Gateway {
 	gw := new(Gateway)
 	gw.ctx, gw.cancel = context.WithCancel(context.Background())
-	gw.gateRouter = router.NewRouter(router.Random)
+	gw.deliveryRouter = router.NewRouter(router.Random)
 	gw.mpClients = sync.Map{}
 	gw.mpSessions = sync.Map{}
 
@@ -61,7 +63,7 @@ func Create() *Gateway {
 }
 
 func (gw *Gateway) Name() string {
-	return "gateway"
+	return "gate"
 }
 
 func (gw *Gateway) Init() {
@@ -110,8 +112,9 @@ func (gw *Gateway) registerServiceInstance() {
 	ip, _ := xnet.InternalIP()
 	ep := fmt.Sprintf("//%s:%d", ip, launch.Config.Gate.RPCPort)
 
+	gw.regName = fmt.Sprintf("%s-%s:%d", gw.Name(), ip, launch.Config.Gate.RPCPort)
 	gw.instance = &registry.ServiceInstance{
-		ID:       fmt.Sprintf("%s-%s:%d", gw.Name(), ip, launch.Config.Gate.RPCPort),
+		ID:       gw.regName,
 		Name:     string(known.Gate),
 		Kind:     known.Gate,
 		Alias:    gw.Name(),
@@ -209,7 +212,7 @@ func (gw *Gateway) watchServiceInstance() {
 				continue
 			}
 
-			gw.gateRouter.ReplaceServices(services...)
+			gw.deliveryRouter.ReplaceServices(services...)
 		}
 	}()
 }
@@ -244,7 +247,7 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 		return
 	}
 
-	route, err := gw.gateRouter.FindMsgRoute(message.Route)
+	route, err := gw.deliveryRouter.FindMsgRoute(message.Route)
 	if err != nil {
 		if gw.errHandler != nil {
 			gw.errHandler(conn, fmt.Errorf("gateway.no.route"))
@@ -279,11 +282,18 @@ func (gw *Gateway) handleReceive(conn network.Conn, data []byte, _ int) {
 		}
 	}
 
-	rsp, err := client.(transport.InnerClient).RouteRpc(gw.ctx, &transport.RouteRpcReq{
+	head := &transport.Header{
 		MsgId:  message.Route,
-		Datas:  message.Buffer,
+		ConnId: conn.ID(),
 		UserId: conn.UID(),
+		GateId: gw.regName,
+	}
+
+	rsp, err := client.(transport.InnerClient).RouteRpc(gw.ctx, &transport.RouteRpcReq{
+		Head:  head,
+		Datas: message.Buffer,
 	})
+
 	if err != nil {
 		if gw.errHandler != nil {
 			gw.errHandler(conn, err)

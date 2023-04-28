@@ -76,32 +76,6 @@ func (r *Route) addEndpoint(insID string, ep *endpoint.Endpoint) {
 	}
 }
 
-// 移除服务端点
-func (r *Route) removeEndpoint(insID string) {
-	r.rw.Lock()
-	defer r.rw.Unlock()
-
-	switch r.router.strategy {
-	case RoundRobin, WeightRoundRobin:
-		info, ok := r.endpointMap[insID]
-		if !ok {
-			return
-		}
-
-		next := info.index + 1
-		for next < len(r.endpointArr) {
-			r.endpointArr[next-1] = r.endpointArr[next]
-			r.endpointArr[next-1].index -= 1
-			next++
-		}
-
-		r.endpointArr = r.endpointArr[:len(r.endpointArr)-1]
-		delete(r.endpointMap, insID)
-	default:
-		delete(r.endpointMap, insID)
-	}
-}
-
 // 固定分配
 func (r *Route) fixedDispatch(insID string) (*endpoint.Endpoint, error) {
 	r.rw.RLock()

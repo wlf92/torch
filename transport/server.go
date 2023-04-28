@@ -17,7 +17,7 @@ type Server struct {
 func (e *Server) RouteRpc(ctx context.Context, req *RouteRpcReq) (*RouteRpcRsp, error) {
 	reply := &RouteRpcRsp{}
 
-	routeId := req.GetMsgId()
+	routeId := req.GetHead().GetMsgId()
 	if handler, ok := e.Routes[routeId]; ok {
 		obj, ok := reflect.New(reflect.TypeOf(handler).In(1).Elem()).Interface().(proto.Message)
 		if !ok {
@@ -30,7 +30,7 @@ func (e *Server) RouteRpc(ctx context.Context, req *RouteRpcReq) (*RouteRpcRsp, 
 		}
 
 		f := reflect.ValueOf(handler)
-		callResults := f.Call([]reflect.Value{reflect.ValueOf(req.GetUserId()), reflect.ValueOf(obj)})
+		callResults := f.Call([]reflect.Value{reflect.ValueOf(req.GetHead()), reflect.ValueOf(obj)})
 
 		if len(callResults) != 1 {
 			return nil, fmt.Errorf("inner.route.rsp.nil")

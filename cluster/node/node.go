@@ -36,7 +36,8 @@ type Node struct {
 
 	routes map[uint32]interface{}
 
-	rpcRouter *router.Router // rpc路由器
+	rpcRouter  *router.Router // rpc路由器
+	gateRouter *router.Router // gate路由器
 
 	cf        *launch.Node
 	name      string
@@ -49,6 +50,7 @@ func Create(name string) *Node {
 	nd.routes = make(map[uint32]interface{})
 	nd.cf = launch.Config.GetNodeByName(name)
 	nd.rpcRouter = router.NewRouter(router.Random)
+	nd.gateRouter = router.NewRouter(router.Random)
 	nd.name = name
 	nd.mpClients = sync.Map{}
 	return nd
@@ -113,31 +115,37 @@ func (nd *Node) registerServiceInstance() {
 }
 
 func (nd *Node) watchServiceInstance() {
-	rctx, rcancel := context.WithTimeout(nd.ctx, 10*time.Second)
-	watcher, err := nd.registry.Watch(rctx, string(known.Node))
-	rcancel()
+	for _, v := range []known.Kind{known.Node, known.Gate} {
+		rctx, rcancel := context.WithTimeout(nd.ctx, 10*time.Second)
+		watcher, err := nd.registry.Watch(rctx, string(v))
+		rcancel()
 
-	if err != nil {
-		log.Fatalw(fmt.Sprintf("the service instance watch failed: %v", err))
-	}
-	go func() {
-		defer watcher.Stop()
-		for {
-			select {
-			case <-nd.ctx.Done():
-				return
-			default:
-				// exec watch
-			}
-
-			services, err := watcher.Next()
-			if err != nil {
-				continue
-			}
-
-			nd.rpcRouter.ReplaceServices(services...)
+		if err != nil {
+			log.Fatalw(fmt.Sprintf("the service instance watch failed: %v", err))
 		}
-	}()
+		go func(k known.Kind) {
+			defer watcher.Stop()
+			for {
+				select {
+				case <-nd.ctx.Done():
+					return
+				default:
+					// exec watch
+				}
+
+				services, err := watcher.Next()
+				if err != nil {
+					continue
+				}
+
+				if k == known.Node {
+					nd.rpcRouter.ReplaceServices(services...)
+				} else if k == known.Gate {
+					nd.gateRouter.ReplaceServices(services...)
+				}
+			}
+		}(v)
+	}
 }
 
 // 解注册服务实例
