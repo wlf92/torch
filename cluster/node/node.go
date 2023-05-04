@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wlf92/torch"
+	"github.com/wlf92/torch/internal/endpoint"
 	"github.com/wlf92/torch/internal/launch"
 	"github.com/wlf92/torch/internal/router"
 	"github.com/wlf92/torch/pkg/known"
@@ -199,7 +200,7 @@ func (nd *Node) AddRouteHandler(route uint32, handler interface{}) {
 	if tp.NumIn() != 2 || tp.NumOut() != 1 {
 		panic("AddRouteHandler: in/out count error")
 	}
-	if tp.In(0).Kind() != reflect.Int64 {
+	if _, ok := reflect.New(tp.In(0).Elem()).Interface().(*transport.Header); !ok {
 		panic("AddRouteHandler")
 	}
 	if _, ok := reflect.New(tp.In(1).Elem()).Interface().(proto.Message); !ok {
@@ -209,6 +210,14 @@ func (nd *Node) AddRouteHandler(route uint32, handler interface{}) {
 		panic("AddRouteHandler")
 	}
 	nd.routes[route] = handler
+}
+
+func (nd *Node) GetGateClient(insId string) *grpc.ClientConn {
+	ep, err := nd.gateRouter.FindServiceEndpoint(insId)
+	if err != nil {
+		return nil
+	}
+	return nd.getClient(ep)
 }
 
 func (nd *Node) GetServiceClient(alias string) *grpc.ClientConn {
@@ -222,7 +231,12 @@ func (nd *Node) GetServiceClient(alias string) *grpc.ClientConn {
 		return nil
 	}
 
+	return nd.getClient(ep)
+}
+
+func (nd *Node) getClient(ep *endpoint.Endpoint) *grpc.ClientConn {
 	client, ok := nd.mpClients.Load(ep.Address())
+	var err error
 	if !ok {
 		// 如果带宽够，一个连接够了，没必要多个连接，grpc内部会保证重连的问题，所以也不用处理
 		for i := 0; i < 3; i++ {

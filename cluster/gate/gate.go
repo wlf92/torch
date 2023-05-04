@@ -222,6 +222,8 @@ func (gw *Gateway) handleConnect(conn network.Conn) {
 	log.Infow("connnect one")
 
 	s := session.NewSession()
+	s.Init(conn)
+
 	gw.mpSessions.Store(conn.ID(), s)
 }
 
