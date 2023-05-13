@@ -2,24 +2,20 @@ package redis
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/wlf92/torch/mq"
 )
+
+const ErrBusyGroup = "BUSYGROUP Consumer Group name already exists"
 
 type MessageQueue struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	client   redis.UniversalClient
-	status   int32
-	mpTopics sync.Map
-	mpGroups sync.Map
+	client redis.UniversalClient
 }
 
 func Create(ctx context.Context, client redis.UniversalClient) mq.IMessageQueue {
@@ -29,81 +25,33 @@ func Create(ctx context.Context, client redis.UniversalClient) mq.IMessageQueue 
 	return m
 }
 
-func (m *MessageQueue) check(topic string, channel string) error {
-	info, err := m.client.XInfoStream(m.ctx, topic).Result()
-	if err != nil {
-		err = m.Publish(topic, map[string]interface{}{"active": 1})
-		if err != nil {
-			return err
-		}
-		info, err = m.client.XInfoStream(m.ctx, topic).Result()
-		if err != nil {
-			return err
-		}
-	}
-
-	m.mpTopics.Store(topic, struct{}{})
-
-	groups, err := m.client.XInfoGroups(m.ctx, topic).Result()
-	if err != nil {
-		return err
-	}
-
-	isExist := false
-	for _, v := range groups {
-		if v.Name == channel {
-			isExist = true
-		}
-		m.mpGroups.Store(fmt.Sprintf("%s-%s", topic, v.Name), struct{}{})
-	}
-
-	if !isExist {
-		m.client.XGroupCreate(m.ctx, topic, channel, info.LastGeneratedID)
-		m.mpGroups.Store(fmt.Sprintf("%s-%s", topic, channel), struct{}{})
-	}
-	return nil
-}
-
-func (m *MessageQueue) Publish(topic string, body map[string]interface{}) error {
+func (m *MessageQueue) Publish(topic string, body []byte) error {
 	err := m.client.XAdd(m.ctx, &redis.XAddArgs{
-		MaxLen: 5,
+		MaxLen: 1000,
 		Approx: false,
 		Stream: topic,
-		Values: body,
+		Values: map[string]interface{}{"body": body},
 	}).Err()
 	return err
 }
 
-func (m *MessageQueue) Subscribe(topic string, channel string, handler mq.HandlerFunc) error {
-	if channel == "" {
-		channel = "default"
+func (m *MessageQueue) Subscribe(topic string, group string, handler mq.HandlerFunc) error {
+	if group == "" {
+		group = "default"
+	}
+
+	err := m.client.XGroupCreateMkStream(context.Background(), topic, group, "$").Err()
+	if err != nil && err.Error() != ErrBusyGroup {
+		return err
 	}
 
 	go func() {
-		for atomic.LoadInt32(&m.status) == 0 {
-			time.Sleep(time.Second * 5)
-		}
-
-		for {
-			_, ok1 := m.mpTopics.Load(topic)
-			_, ok2 := m.mpGroups.Load(fmt.Sprintf("%s-%s", topic, channel))
-			if !(ok1 && ok2) {
-				err := m.check(topic, channel)
-				if err != nil {
-					time.Sleep(time.Second * 2)
-					continue
-				}
-				break
-			}
-			break
-		}
-
 		for {
 			entries, err := m.client.XReadGroup(m.ctx, &redis.XReadGroupArgs{
-				Group:    channel,
+				Group:    group,
 				Consumer: "default",
 				Streams:  []string{topic, ">"},
-				Count:    5,
+				Count:    1,
 				Block:    0,
 				NoAck:    false,
 			}).Result()
@@ -116,15 +64,12 @@ func (m *MessageQueue) Subscribe(topic string, channel string, handler mq.Handle
 			for i := 0; i < len(entries[0].Messages); i++ {
 				messageID := entries[0].Messages[i].ID
 				values := entries[0].Messages[i].Values
-
-				if values["rpt"] != nil {
-					bts := values["rpt"].(string)
-					err := handler([]byte(bts))
-					if err != nil {
-						log.Fatal(err)
-					}
+				err := handler([]byte(values["body"].(string)))
+				if err != nil {
+					log.Fatal(err)
 				}
-				m.client.XAck(m.ctx, topic, channel, messageID)
+
+				m.client.XAck(m.ctx, topic, group, messageID)
 			}
 		}
 	}()
